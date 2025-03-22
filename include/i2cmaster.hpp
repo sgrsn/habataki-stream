@@ -16,12 +16,6 @@ class I2CMaster
  public:
   I2CMaster() {}
 
-  void init() 
-  { 
-    // I2Cマスターの初期化
-    Wire.begin();  // マスターとして初期化
-  }
-
   // 指定したレジスタの値を読み出す関数
   bool readRegister(uint8_t slave_addr, byte regAddr, i2c_data_type_t& value) 
   {
