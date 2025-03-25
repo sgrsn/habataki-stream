@@ -51,6 +51,10 @@ public:
 
     // bufferをクリア
     void clearBuffer();
+
+    bool fileExists(const char* filename) {
+        return _sd.exists(filename);
+    }
     
     // 現在のバッファ内データ数を取得
     uint16_t getBufferCount() const;
@@ -186,7 +190,7 @@ bool SDLogger<T>::begin() {
     }
     
     // 既存のファイルがあれば削除(オプション)
-    _sd.remove(_filename);
+    // _sd.remove(_filename);
     
     // CSVファイルを新規作成
     _csvFile = _sd.open(_filename, O_WRONLY | O_CREAT | O_TRUNC);

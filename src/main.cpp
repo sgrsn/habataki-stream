@@ -105,11 +105,11 @@ void imuTimer()
       }
       VN::Lla lla = nextMeasurement_maybe->ins.posLla.value();
 
-      std::cout << "Fix: " << ins_status.gnssFix << std::endl;
-      std::cout << "Lat: " << lla.lat << ", Lon: " << lla.lon << ", Alt: " << lla.alt << std::endl;
+      // std::cout << "Fix: " << ins_status.gnssFix << std::endl;
+      // std::cout << "Lat: " << lla.lat << ", Lon: " << lla.lon << ", Alt: " << lla.alt << std::endl;
 
       VN::Quat quat = nextMeasurement_maybe->attitude.quaternion.value();
-      std::cout << "Quat: " << quat.vector[0] << ", " << quat.vector[1] << ", " << quat.vector[2] << ", " << quat.scalar << std::endl;  
+      // std::cout << "Quat: " << quat.vector[0] << ", " << quat.vector[1] << ", " << quat.vector[2] << ", " << quat.scalar << std::endl;  
       SensorData& currentData = logger.getCurrentData();
       currentData.quatX = quat.vector[0];
       currentData.quatY = quat.vector[1];
@@ -187,6 +187,15 @@ void setup()
   status.vectornav = ErrorCode::SUCCESS;
   Serial.println("Setup Done");
 
+  if (!logger.begin()) 
+  {
+    Serial.println("Failed to initialize SDLogger");
+    // エラーをESP32に通知
+    status.sdcard = ErrorCode::FAILED;
+    i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, status);
+    while (1) { /* エラー時は停止 */ }
+  }
+
   // ESP32が準備完了するまで待つ
   int esp32Ready = false;
   while(!esp32Ready)
@@ -213,8 +222,15 @@ void loop() {
     {
       // 次のファイルを作成
       logger.setCsvHeader("timestamp_ms,quatX,quatY,quatZ,quatW,latitude,longitude,altitude,fix,flapping_freq,X,Y,slider,start");
-      file_count++;
-      std::string file = filename + std::to_string(file_count) + ".csv";
+        
+      bool file_exists = true;
+      std::string file;
+      while(file_exists)
+      {
+        file = filename + std::to_string(file_count) + ".csv";
+        file_exists = logger.fileExists(file.c_str());
+        file_count++;
+      }
       if (!logger.begin(file.c_str())) {
         Serial.println("Failed to initialize SDLogger");
         // エラーをESP32に通知
