@@ -30,7 +30,7 @@ SDLogger<SensorData> logger(CSV_FILE_NAME, 256, 100);
 IntervalTimer timer_i2c;
 IntervalTimer timer_imu;
 
-int gnss_fix = 0;
+EdgeStatus status;
 
 bool is_logging = false;
 int start_logging = 0;
@@ -52,9 +52,8 @@ static void I2CTimer()
 
   // std::cout << "X: " << controlData.X << ", Y: " << controlData.Y << ", Slider: " << controlData.slider << ", Start: " << controlData.start << ", angle: " << angle << std::endl;
 
-  // GNSSの状態をESP32に送信
-  i2cMaster.writeRegister(ESP32_I2C_ADDR, GNSS_STATUS_REG, gnss_fix);
-  i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, 2);
+  // StatusをESP32に送信
+  i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, status);
 
   // ロギングデータの更新
   SensorData& currentData = logger.getCurrentData();
@@ -99,12 +98,18 @@ void imuTimer()
     if (nextMeasurement_maybe->matchesMessage(binaryOutput1Register)) 
     {
       VN::InsStatus ins_status = nextMeasurement_maybe->ins.insStatus.value();
-      gnss_fix = ins_status.gnssFix;
+      if ( ins_status.gnssFix == 1 ) {
+        status.gnss_fix = ErrorCode::SUCCESS;
+      } else {
+        status.gnss_fix = ErrorCode::FAILED;
+      }
       VN::Lla lla = nextMeasurement_maybe->ins.posLla.value();
-      //std::cout << "Lat: " << lla.lat << ", Lon: " << lla.lon << ", Alt: " << lla.alt << std::endl;
+
+      std::cout << "Fix: " << ins_status.gnssFix << std::endl;
+      std::cout << "Lat: " << lla.lat << ", Lon: " << lla.lon << ", Alt: " << lla.alt << std::endl;
 
       VN::Quat quat = nextMeasurement_maybe->attitude.quaternion.value();
-      //std::cout << "Quat: " << quat.vector[0] << ", " << quat.vector[1] << ", " << quat.vector[2] << ", " << quat.scalar << std::endl;  
+      std::cout << "Quat: " << quat.vector[0] << ", " << quat.vector[1] << ", " << quat.vector[2] << ", " << quat.scalar << std::endl;  
       SensorData& currentData = logger.getCurrentData();
       currentData.quatX = quat.vector[0];
       currentData.quatY = quat.vector[1];
@@ -157,13 +162,14 @@ void setup()
   as5600.setDirection(AS5600_CLOCK_WISE);
 
   // vectornavの初期化
-  VN::Error latestError = sensor.autoConnect(VN200_COMPORT);
+  VN::Error latestError = sensor.connect(VN200_COMPORT, VN::Sensor::BaudRate::Baud115200);
   if (latestError != VN::Error::None) {
     Serial.println("vectornav autoConnect failed");
     // エラーをESP32に通知
     while(true)
     {
-      i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, -1);
+      status.vectornav = ErrorCode::FAILED;
+      i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, static_cast<int>(status));
       delay(500);
     }
   }
@@ -178,7 +184,7 @@ void setup()
   sensor.writeRegister(&binaryOutput1Register);
   delay(500);
   sensor.asyncOutputEnable(VN::AsyncOutputEnable::State::Enable);
-
+  status.vectornav = ErrorCode::SUCCESS;
   Serial.println("Setup Done");
 
   // ESP32が準備完了するまで待つ
@@ -212,10 +218,12 @@ void loop() {
       if (!logger.begin(file.c_str())) {
         Serial.println("Failed to initialize SDLogger");
         // エラーをESP32に通知
-        i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, -1);
+        status.sdcard = ErrorCode::FAILED;
+        i2cMaster.writeRegister(ESP32_I2C_ADDR, TEENSY41_STATUS_REG, status);
         while (1) { /* エラー時は停止 */ }
       }
-      logger.startLogging(1000);
+      status.sdcard = ErrorCode::SUCCESS;
+      logger.startLogging(10000);
       Serial.println(millis());
     }
 
